@@ -1,0 +1,170 @@
+"""
+Utility helpers for the Code Review NLP Assistant.
+"""
+
+from __future__ import annotations
+import ast
+import re
+from typing import Any
+
+
+# ── Code parsing helpers ──────────────────────────────────────────────────
+
+def extract_functions(code: str) -> list[dict[str, Any]]:
+    """
+    Parse Python source and return metadata for each function/method.
+    Returns a list of dicts with keys:
+        name, args, returns, has_docstring, lineno, end_lineno, source
+    """
+    results = []
+    try:
+        tree = ast.parse(code)
+    except SyntaxError:
+        return results
+
+    lines = code.splitlines()
+
+    for node in ast.walk(tree):
+        if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            continue
+
+        # Argument names
+        args = [a.arg for a in node.args.args]
+
+        # Return annotation
+        returns = ""
+        if node.returns:
+            try:
+                returns = ast.unparse(node.returns)
+            except Exception:
+                returns = "?"
+
+        # Docstring check
+        has_doc = (
+            isinstance(node.body[0], ast.Expr)
+            and isinstance(node.body[0].value, ast.Constant)
+            and isinstance(node.body[0].value.value, str)
+        ) if node.body else False
+
+        end = getattr(node, "end_lineno", node.lineno)
+        src_lines = lines[node.lineno - 1 : end]
+        source = "\n".join(src_lines)
+
+        results.append({
+            "name":          node.name,
+            "args":          args,
+            "returns":       returns,
+            "has_docstring": has_doc,
+            "lineno":        node.lineno,
+            "end_lineno":    end,
+            "source":        source,
+        })
+
+    return results
+
+
+def extract_classes(code: str) -> list[dict[str, Any]]:
+    """Return a list of class metadata dicts."""
+    results = []
+    try:
+        tree = ast.parse(code)
+    except SyntaxError:
+        return results
+
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.ClassDef):
+            continue
+        methods = [
+            n.name for n in ast.walk(node)
+            if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))
+        ]
+        has_doc = (
+            isinstance(node.body[0], ast.Expr)
+            and isinstance(node.body[0].value, ast.Constant)
+        ) if node.body else False
+
+        results.append({
+            "name":          node.name,
+            "methods":       methods,
+            "has_docstring": has_doc,
+            "lineno":        node.lineno,
+        })
+
+    return results
+
+
+def detect_language(code: str) -> str:
+    """Very simple language heuristic."""
+    if re.search(r'\bdef\b.*:\s*$', code, re.MULTILINE):
+        return "python"
+    if re.search(r'\bfunction\b|\bconst\b|\blet\b|\bvar\b', code):
+        return "javascript"
+    if re.search(r'\bpublic\b.*\bclass\b', code):
+        return "java"
+    return "unknown"
+
+
+# ── Reporting helpers ─────────────────────────────────────────────────────
+
+GRADE_MAP = [
+    (90, "A", "Excellent"),
+    (75, "B", "Good"),
+    (60, "C", "Needs work"),
+    (40, "D", "Poor"),
+    (0,  "F", "Critical"),
+]
+
+
+def score_to_grade(score: float) -> tuple[str, str]:
+    """Return (letter_grade, label) for a 0-100 score."""
+    for threshold, letter, label in GRADE_MAP:
+        if score >= threshold:
+            return letter, label
+    return "F", "Critical"
+
+
+def score_color(score: float) -> str:
+    """Return a hex colour representing the score quality."""
+    if score >= 80: return "#22c55e"
+    if score >= 60: return "#f59e0b"
+    if score >= 40: return "#f97316"
+    return "#ef4444"
+
+
+def build_report(result: Any, filename: str = "code_review") -> str:
+    """Generate a Markdown report from a CodeQualityResult."""
+    grade, label = score_to_grade(result.overall_score)
+    lines = [
+        f"# Code Review Report — `{filename}`\n",
+        f"## Overall Score: {result.overall_score}/100 ({grade} — {label})\n",
+        "### Sub-scores\n",
+        "| Metric | Score |",
+        "|--------|-------|",
+        f"| Documentation | {result.documentation_score}/100 |",
+        f"| Naming Quality | {result.naming_score}/100 |",
+        f"| Complexity | {result.complexity_score}/100 |",
+        "",
+    ]
+
+    if result.issues:
+        lines.append("### Issues Found\n")
+        for issue in result.issues:
+            lines.append(f"- {issue}")
+        lines.append("")
+
+    if result.suggestions:
+        lines.append("### Suggestions\n")
+        for s in result.suggestions:
+            lines.append(f"- {s}")
+        lines.append("")
+
+    if result.generated_docstring:
+        lines.append("### Generated Docstring (CodeT5)\n")
+        lines.append("```python")
+        lines.append(result.generated_docstring)
+        lines.append("```\n")
+
+    lines.append("---")
+    lines.append("*Generated by Code Review NLP Assistant using CodeBERT + CodeT5*")
+
+    return "\n".join(lines)
