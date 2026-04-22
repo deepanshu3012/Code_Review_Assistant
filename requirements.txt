@@ -1,6 +1,6 @@
-transformers==4.40.0
+transformers==4.41.0
 torch==2.6.0
-tokenizers==0.19.1
+tokenizers==0.21.0
 gradio==4.44.1
 plotly==5.22.0
 sentencepiece==0.2.0
