@@ -4,3 +4,4 @@ tokenizers
 plotly
 sentencepiece
 accelerate
+gradio==5.23.0
