@@ -1,6 +1,5 @@
 transformers==4.40.0
-torch==2.2.2+cpu
-torchvision==0.17.2+cpu
+torch==2.6.0
 tokenizers==0.19.1
 gradio==4.44.1
 radon==6.0.1

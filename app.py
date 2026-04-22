@@ -2,15 +2,7 @@
 Code Review NLP Assistant — Gradio App
 Run with: python app.py
 """
-import subprocess
-import sys
 
-subprocess.run([
-    sys.executable, "-m", "pip", "install",
-    "torch==2.2.2",
-    "--index-url", "https://download.pytorch.org/whl/cpu",
-    "--quiet"
-], check=False)
 
 import sys
 import os
